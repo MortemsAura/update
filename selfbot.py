@@ -4,13 +4,13 @@ class SELFBOT():
 	
 import discord, subprocess, sys, time, os, colorama, base64, codecs, datetime, io, random, numpy, datetime, smtplib, string, ctypes
 import urllib.parse, urllib.request, re, json, requests, webbrowser, aiohttp, dns.name, asyncio, functools, logging, youtube_dl, wget, typing
-from selfupdate import update
-    update()
+import pypresence
 
 from discord.ext import (
     commands,
     tasks
 )
+from pypresence import Presence
 from bs4 import BeautifulSoup as bs4
 from urllib.parse import urlencode
 from pymongo import MongoClient
@@ -29,6 +29,17 @@ ctypes.windll.kernel32.SetConsoleTitleW(f'[Ragnarok Selfbot v{SELFBOT.__version_
 def __init__(self, bot):
         self.bot = bot
         self.saved_roles = {}
+
+def async_executor():
+    def outer(func):
+        @functools.wraps(func)
+        def inner(*args, **kwargs):
+            thing = functools.partial(func, *args, **kwargs)
+            return loop.run_in_executor(None, thing)
+
+        return inner
+
+    return outer
 
 #<--------------Colors Start-------------->
 purple_dark= 0x6a006a
@@ -733,9 +744,66 @@ async def bitly(ctx, *, link): # b'\xfc'
             print(f"{Fore.RED}[ERROR]: {Fore.YELLOW}{e}"+Fore.RESET)
         else:
             print(f"{Fore.RED}[ERROR]: {Fore.YELLOW}{req.text}"+Fore.RESET)
+            
+@Ragnarok.command()
+async def update(self, ctx):
+        '''Auto Update command, checks if you have latest version
+        Use tags github-token to find out how to set up this token'''
+        git = self.bot.get_cog('Git')
+        if not await git.starred('MortemsAura/update/selfbot.py'): return await ctx.send('**This command is disabled as the user have not starred <https://github.com/MortemsAura/update/selfbot.py>**')
+        # get username
+        username = await git.githubusername()
+        async with ctx.session.get('https://api.github.com/repos/MortemsAura/update/selfbot.py/git/refs/heads/rewrite', headers={"Authorization": f"Bearer {git.githubtoken}"}) as resp:
+            if 300 > resp.status >= 200:
+                async with ctx.session.post(f'https://api.github.com/repos/{username}/selfbot.py/merges', json={"head": (await resp.json())['object']['sha'], "base": "rewrite", "commit_message": "Updating Bot"}, headers={"Authorization": f"Bearer {git.githubtoken}"}) as resp2:
+                    if 300 > resp2.status >= 200:
+                        if resp2.status == 204:
+                            return await ctx.send('Already at latest version!')
+                        await ctx.send('Bot updated! Restarting...')
+                    else:
+                        if resp2.status == 409:
+                            return await ctx.send('Merge conflict, you did some commits that made this fail!')
+                        await ctx.send('Well, I failed somehow, send the following to `4JR#2713` (180314310298304512) - resp2: ```py\n' + str(await resp2.json()) + '\n```')
+            else:
+                await ctx.send('Well, I failed somehow, send the following to `4JR#2713` (180314310298304512) - resp: ```py\n' + str(await resp.json()) + '\n```')
 
 @Ragnarok.command()
+async def boom(ctx):
+        list = (
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 5```",
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 4```",
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 3```",
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 2```",
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 1```",
+            "```THIS MESSAGE WILL SELFDESTRUCT IN 0```",
+            "💣",
+            "💥",
+        )
+        for i in list:
+            await asyncio.sleep(1.5)
+            await ctx.message.edit(content=i)
 
+@Ragnarok.command()
+async def adminservers(ctx):
+    await ctx.message.delete()
+    admins = []
+    bots = []
+    kicks = []
+    bans = []
+    for guild in Ragnarok.guilds:
+        if guild.me.guild_permissions.administrator:
+            admins.append(discord.utils.escape_markdown(guild.name))
+        if guild.me.guild_permissions.manage_guild and not guild.me.guild_permissions.administrator:
+            bots.append(discord.utils.escape_markdown(guild.name))
+        if guild.me.guild_permissions.ban_members and not guild.me.guild_permissions.administrator:
+            bans.append(discord.utils.escape_markdown(guild.name))
+        if guild.me.guild_permissions.kick_members and not guild.me.guild_permissions.administrator:
+            kicks.append(discord.utils.escape_markdown(guild.name))
+    adminPermServers = f"`SERVERS WITH ADMIN ({len(admins)}):`\n`{admins}`"
+    botPermServers = f"\n`SERVERS WITH BOT_ADD PERMISSION ({len(bots)}):`\n`{bots}`"
+    banPermServers = f"\n`SERVERS WITH BAN PERMISSION ({len(bans)}):`\n`{bans}`"
+    kickPermServers = f"\n`SERVERS WITH KICK PERMISSION ({len(kicks)}:`\n`{kicks}`"
+    await ctx.send(adminPermServers + botPermServers + banPermServers + kickPermServers)
 
 @Ragnarok.command()
 async def stopcyclenick(ctx):
@@ -2692,7 +2760,7 @@ async def help(ctx, category=None):
     elif str(category).lower() == "account":
         embed = discord.Embed(color=random.randrange(0x1000000), timestamp=ctx.message.created_at)
         embed.set_image(url="https://cdn.discordapp.com/attachments/763082791079378995/769240897115258880/imageedit_2_6218835146.gif")
-        embed.description = f"\ud83d\udd31 `ACCOUNT COMMANDS`\n`> set-pfp (url)	Set the specified url as profile picture [Must have password set in config.json file]\n`> btcstream	Stream current btc price\n`> pfpsteal (user)	Allows you to steal mentioned user profile picture [Must have password set in config.json file]\n`> blank	Turns your name and profile picture blank\n`> hypesquad (house)	Allows you to change your hypesquad (ie: !hypesquad bravery)\n`> fakenet (type) [name]	Allows you to spoof connections in your profile (ie: !fakenet skype NAME)\n`> steal-all-pfp	Steal all the pfps in the server\n`> stream (message)	Stream that message in your profile\n`> watching (message)	Add a watching status with that message in your profile\n`> listening (message)	Add a listening status with that message in your profile\n`> game (message)	Add a game status with that message in your profile\n`> masscon (type) (amount) (name)	Add a big amount of connections to your profile (ie: !masscon skype 5 NAME\n`> stopcyclenick stops the cyclenick command\n`> cyclenick animates your nickname\n`>invnick makes your nickname invisible\n`>fucknick completely ruins your nickname\n`>nickname changes your nickname to anything you like`"
+        embed.description = f"\ud83d\udd31 `ACCOUNT COMMANDS`\n`> adminservers displays what servers you have administrator permissions in\n`> set-pfp (url)	Set the specified url as profile picture [Must have password set in config.json file]\n`> btcstream	Stream current btc price\n`> pfpsteal (user)	Allows you to steal mentioned user profile picture [Must have password set in config.json file]\n`> blank	Turns your name and profile picture blank\n`> hypesquad (house)	Allows you to change your hypesquad (ie: !hypesquad bravery)\n`> fakenet (type) [name]	Allows you to spoof connections in your profile (ie: !fakenet skype NAME)\n`> steal-all-pfp	Steal all the pfps in the server\n`> stream (message)	Stream that message in your profile\n`> watching (message)	Add a watching status with that message in your profile\n`> listening (message)	Add a listening status with that message in your profile\n`> game (message)	Add a game status with that message in your profile\n`> masscon (type) (amount) (name)	Add a big amount of connections to your profile (ie: !masscon skype 5 NAME\n`> stopcyclenick stops the cyclenick command\n`> cyclenick animates your nickname\n`>invnick makes your nickname invisible\n`>fucknick completely ruins your nickname\n`>nickname changes your nickname to anything you like`"
         await ctx.send(embed=embed)
     elif str(category).lower() == "hack":
         embed = discord.Embed(color=random.randrange(0x1000000), timestamp=ctx.message.created_at)
@@ -2707,7 +2775,7 @@ async def help(ctx, category=None):
     elif str(category).lower() == "misc":
         embed = discord.Embed(color=random.randrange(0x1000000), timestamp=ctx.message.created_at)
         embed.set_image(url="https://cdn.discordapp.com/attachments/763082791079378995/769240897115258880/imageedit_2_6218835146.gif")
-        embed.description = f"\u2753 `MISCELLANEOUS COMMANDS`\n`> bird sends a bird picture\n`> fox	Random fox imagedog	Random dog image\n`> cat	Random cat image [Must have cat api key set in config.json file]\n`> minesweeper	Play minesweeper in the discord chat\n`> dick (user)	Display the mentioned user dick size\n`> rainbow (role)	Cycle colors in the role you specify\n`> ball (question)	Answers your question\n`> joke	Drops a random joke in the chat\n`> slot	Play slot machine in the discord chat\n`> topic	Start a random topic to keep the chat going\n`> wyr	Start a 'what would you rather' topic in the chat\n`> feed (user)	Feed the mentioned user\n`> tickle (user)	Tickle the mentioned user\n`> slap (user)	Slap the mentioned user\n`> hug (user)	Hug the mentioned user\n`> smug (user)	Smug at the mentioned user\n`> pat (user)	Pat the mentioned user\n`> kiss (user)	Kiss the mentioned user\n`> nine_eleven sends a 9/11 animation\n`> phcomment sends a funny fake pornhub comment\n`>dox sends a funny dox animation\n`>hack sends a funny hack animation\n`>fry sends a fry version of your pfp\n`>magik sends a magik version of your pfp\n`>cum sends a funny cum animation\n`>coinflip plays a small coinflip game`"
+        embed.description = f"\u2753 `MISCELLANEOUS COMMANDS`\n`> boom sends a fun message self destruct message\n`> bird sends a bird picture\n`> fox	Random fox imagedog	Random dog image\n`> cat	Random cat image [Must have cat api key set in config.json file]\n`> minesweeper	Play minesweeper in the discord chat\n`> dick (user)	Display the mentioned user dick size\n`> rainbow (role)	Cycle colors in the role you specify\n`> ball (question)	Answers your question\n`> joke	Drops a random joke in the chat\n`> slot	Play slot machine in the discord chat\n`> topic	Start a random topic to keep the chat going\n`> wyr	Start a 'what would you rather' topic in the chat\n`> feed (user)	Feed the mentioned user\n`> tickle (user)	Tickle the mentioned user\n`> slap (user)	Slap the mentioned user\n`> hug (user)	Hug the mentioned user\n`> smug (user)	Smug at the mentioned user\n`> pat (user)	Pat the mentioned user\n`> kiss (user)	Kiss the mentioned user\n`> nine_eleven sends a 9/11 animation\n`> phcomment sends a funny fake pornhub comment\n`>dox sends a funny dox animation\n`>hack sends a funny hack animation\n`>fry sends a fry version of your pfp\n`>magik sends a magik version of your pfp\n`>cum sends a funny cum animation\n`>coinflip plays a small coinflip game`"
         await ctx.send(embed=embed)
     elif str(category).lower() == "util":
         embed = discord.Embed(color=random.randrange(0x1000000), timestamp=ctx.message.created_at)
